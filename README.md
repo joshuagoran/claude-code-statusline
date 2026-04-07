@@ -4,21 +4,20 @@ A custom statusline script for [Claude Code](https://claude.ai/code) that displa
 
 ## Features
 
-- **Git branch** - Current branch name
-- **Model ID** - Active Claude model
-- **Version** - Claude Code version
-- **Internet speed** - Download/upload speeds (cached, updates hourly or on network change)
-- **Weather** - Current conditions and temperature with daily high/low
-- **Context usage** - Progress bar showing context window usage (turns red at 64%)
-- **SPM updates** - Swift Package Manager dependency update notifications
+- **Git branch** — current branch name
+- **Model ID** — active Claude model
+- **Version** — Claude Code version
+- **Internet speed** — download/upload speeds (cached, updates hourly or on network change)
+- **Weather** — current conditions and temperature with daily high/low
+- **Context usage** — progress bar showing context window usage (turns red at 64%)
+- **Session usage** — 5-hour rate limit usage bar with color coding (cyan → yellow → magenta)
 
 ## Screenshot
 
 ```
-⎇ main | claude-opus-4-5-20251101 | v1.0.45 | ↓ 150Mbps ↑ 12Mbps | sunny 72°F (78°F/65°F)
+⎇ main | claude-opus-4-6 | v1.0.50 | ↓ 150Mbps ↑ 12Mbps | sunny 72°F (78°F/65°F)
 [████████████░░░░░░░░]
-SPM Updates Available:
-  SomePackage: 1.0.0 → 1.1.0 (https://github.com/owner/repo)
+Session [████████░░░░░░░░░░░░] 40%
 ```
 
 ## Installation
@@ -78,26 +77,14 @@ local timezone="America/Los_Angeles"  # Your timezone
 - Copy the latitude and longitude values
 
 **Common timezones:**
-- `America/New_York` - Eastern
-- `America/Chicago` - Central
-- `America/Denver` - Mountain
-- `America/Los_Angeles` - Pacific
-
-### Primary Xcode Project (Optional)
-
-If you want SPM update checking for a specific project regardless of your current directory, set the primary project path in `statusline.sh`:
-
-```bash
-# Find this section in check_spm_updates() function (~line 535)
-# CUSTOMIZE: Set your primary Xcode project path (optional)
-local primary_project="/Users/yourname/Projects/YourApp/YourApp.xcodeproj/project.pbxproj"
-```
-
-If left empty, the script will search for `.xcodeproj` files in the current directory and parent directories.
+- `America/New_York` — Eastern
+- `America/Chicago` — Central
+- `America/Denver` — Mountain
+- `America/Los_Angeles` — Pacific
 
 ### GitHub Token (Optional)
 
-For higher GitHub API rate limits (5000/hour vs 60/hour) when checking SPM updates, create a token file:
+For higher GitHub API rate limits (5000/hour vs 60/hour), create a token file:
 
 ```bash
 mkdir -p ~/.config/github
@@ -126,22 +113,30 @@ Or from terminal:
 |---------|----------------|--------------|
 | Speed test | 60 minutes | Network change (WiFi SSID or interface) |
 | Weather | 20 minutes | Time-based |
-| SPM updates | 4 hours | Project file modification |
 
 ## Context Progress Bar
 
 The progress bar shows context window usage:
-- **Below 64%**: Simple bar, no percentage shown
-- **64% and above**: Bar turns red, percentage displayed
+- **Below 64%** — simple bar, no percentage shown
+- **64% and above** — bar turns red, percentage displayed
 
 This gives you warning before Claude Code's auto-compact triggers (~95%).
 
+## Session Usage Bar
+
+Shows your 5-hour rate limit usage as a progress bar:
+- **Below 50%** — cyan
+- **50-79%** — yellow
+- **80%+** — magenta
+
+This data comes from Claude Code's built-in `rate_limits.five_hour.used_percentage` field, available to any status line script.
+
 ## Dependencies
 
-- **bash** - Shell interpreter
-- **jq** - JSON parsing (required)
-- **curl** - API requests (usually pre-installed)
-- **speedtest-cli** - Internet speed testing (optional, auto-installs)
+- **bash** — shell interpreter
+- **jq** — JSON parsing (required)
+- **curl** — API requests (usually pre-installed)
+- **speedtest-cli** — internet speed testing (optional, auto-installs)
 
 ## macOS Specific
 
@@ -153,4 +148,4 @@ Modifications may be needed for Linux compatibility.
 
 ## License
 
-This project is released under the MIT License. See the [LICENSE](https://github.com/DanielStormApps/claude-code-statusline/blob/main/LICENSE) file for more information.
+This project is released under the MIT License. See the [LICENSE](LICENSE) file for more information.
