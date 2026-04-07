@@ -200,6 +200,7 @@ version=$(echo "$input" | jq -r '.version')
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir')
 context_used_percentage=$(echo "$input" | jq -r '.context_window.used_percentage')
 rate_limit_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
+rate_limit_resets_at=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 
 # Get git branch name (skip locks to avoid delays)
 cd "$current_dir" 2>/dev/null
@@ -532,6 +533,7 @@ get_context_progress_bar "$context_used_percentage"
 # Display rate limit usage bar (5-hour session usage)
 get_rate_limit_bar() {
     local used_percentage="$1"
+    local resets_at="$2"
     local bar_char="█"
     local empty_char="░"
     local bar=""
@@ -566,7 +568,23 @@ get_rate_limit_bar() {
         bar+="$empty_char"
     done
 
-    printf "\n%bSession [%s] %d%%%b" "$color_start" "$bar" "$percent_int" "$color_end"
+    # Calculate time until reset
+    local reset_suffix=""
+    if [[ -n "$resets_at" && "$resets_at" != "null" ]]; then
+        local now=$(date +%s)
+        local diff=$((resets_at - now))
+        if [[ $diff -gt 0 ]]; then
+            local hours=$((diff / 3600))
+            local mins=$(( (diff % 3600) / 60 ))
+            if [[ $hours -gt 0 ]]; then
+                reset_suffix=" | resets in ${hours}h${mins}m"
+            else
+                reset_suffix=" | resets in ${mins}m"
+            fi
+        fi
+    fi
+
+    printf "\n%bSession [%s] %d%%%s%b" "$color_start" "$bar" "$percent_int" "$reset_suffix" "$color_end"
 }
 
-get_rate_limit_bar "$rate_limit_pct"
+get_rate_limit_bar "$rate_limit_pct" "$rate_limit_resets_at"
