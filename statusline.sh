@@ -199,10 +199,23 @@ model_id=$(echo "$input" | jq -r '.model.id')
 version=$(echo "$input" | jq -r '.version')
 current_dir=$(echo "$input" | jq -r '.workspace.current_dir')
 context_used_percentage=$(echo "$input" | jq -r '.context_window.used_percentage')
+rate_limit_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 
 # Get git branch name (skip locks to avoid delays)
 cd "$current_dir" 2>/dev/null
-git_branch=$(git branch --show-current 2>/dev/null || echo "no-git")
+git_branch=$(git branch --show-current 2>/dev/null)
+
+# If no branch found in current_dir, try project_dir
+if [[ -z "$git_branch" ]]; then
+    project_dir=$(echo "$input" | jq -r '.workspace.project_dir // empty')
+    if [[ -n "$project_dir" ]]; then
+        cd "$project_dir" 2>/dev/null
+        git_branch=$(git branch --show-current 2>/dev/null)
+    fi
+fi
+
+# Default to "no-git" if still no branch found
+[[ -z "$git_branch" ]] && git_branch="no-git"
 
 # Get current network identifier for cache invalidation
 get_network_id() {
@@ -394,11 +407,10 @@ get_context_progress_bar() {
         bar+="$empty_char"
     done
 
-    # Output the progress bar (with percentage only if >= 64%)
     if [[ "$show_percentage" == true ]]; then
-        printf "\n%b[%s] %d%%%b" "$color_start" "$bar" "$percent_int" "$color_end"
+        printf "\nContext [%s] %d%%%b" "$bar" "$percent_int" "$color_end"
     else
-        printf "\n[%s]" "$bar"
+        printf "\nContext [%s] %d%%" "$bar" "$percent_int"
     fi
 }
 
@@ -413,16 +425,21 @@ get_weather() {
     # CUSTOMIZE: Set your location coordinates and timezone
     # Default: San Francisco (Anthropic HQ) - Update these for your location
     # Find coordinates at: https://www.latlong.net/
-    local latitude="37.790024"
-    local longitude="-122.400833"
-    local timezone="America/Los_Angeles"
+    local latitude="41.4993"
+    local longitude="-81.6944"
+    local timezone="America/New_York"
     
+    # Create location identifier for cache invalidation
+    local location_id="${latitude},${longitude}"
+
     # Check if cache exists and is fresh
     if [[ -f "$cache_file" ]]; then
         local cache_timestamp=$(head -1 "$cache_file" 2>/dev/null)
+        local cached_location=$(sed -n '2p' "$cache_file" 2>/dev/null)
         if [[ -n "$cache_timestamp" && "$cache_timestamp" =~ ^[0-9]+$ ]]; then
             local cache_age=$((current_time - cache_timestamp))
-            if [[ $cache_age -lt $cache_max_age ]]; then
+            # Use cache only if fresh AND location hasn't changed
+            if [[ $cache_age -lt $cache_max_age && "$cached_location" == "$location_id" ]]; then
                 use_cache=true
             fi
         fi
@@ -430,8 +447,8 @@ get_weather() {
     
     # Use cached data if fresh, otherwise fetch new data
     if [[ "$use_cache" == true ]]; then
-        # Read cached weather data (skip timestamp line)
-        weather_json=$(tail -n +2 "$cache_file" 2>/dev/null)
+        # Read cached weather data (skip timestamp and location lines)
+        weather_json=$(tail -n +3 "$cache_file" 2>/dev/null)
     else
         # Fetch fresh weather data from Open-Meteo API
         # Get current conditions plus daily high/low
@@ -440,9 +457,10 @@ get_weather() {
         
         # Cache the data if we got a valid response
         if [[ -n "$weather_json" && "$weather_json" != *"error"* ]]; then
-            # Store timestamp and weather data in cache file
+            # Store timestamp, location, and weather data in cache file
             {
                 echo "$current_time"
+                echo "$location_id"
                 echo "$weather_json"
             } > "$cache_file"
         fi
@@ -807,6 +825,48 @@ printf "⎇ %s | %s | v%s%s%s" \
 
 # Display context usage progress bar
 get_context_progress_bar "$context_used_percentage"
+
+# Display rate limit usage bar (5-hour session usage)
+get_rate_limit_bar() {
+    local used_percentage="$1"
+    local bar_char="█"
+    local empty_char="░"
+    local bar=""
+
+    # Skip if no rate limit data available
+    if [[ -z "$used_percentage" || "$used_percentage" == "null" ]]; then
+        return
+    fi
+
+    local percent_int=$(printf "%.0f" "$used_percentage" 2>/dev/null || echo "0")
+
+    local bar_width=20
+    local color_start=""
+    local color_end="\033[0m"
+
+    # Color based on usage: cyan < 50%, yellow 50-79%, magenta >= 80%
+    if [[ $percent_int -ge 80 ]]; then
+        color_start="\033[35m"  # Magenta
+    elif [[ $percent_int -ge 50 ]]; then
+        color_start="\033[33m"  # Yellow
+    else
+        color_start="\033[36m"  # Cyan
+    fi
+
+    local filled_width=$((percent_int * bar_width / 100))
+    local empty_width=$((bar_width - filled_width))
+
+    for ((i=0; i<filled_width; i++)); do
+        bar+="$bar_char"
+    done
+    for ((i=0; i<empty_width; i++)); do
+        bar+="$empty_char"
+    done
+
+    printf "\n%bSession [%s] %d%%%b" "$color_start" "$bar" "$percent_int" "$color_end"
+}
+
+get_rate_limit_bar "$rate_limit_pct"
 
 # Check and display SPM updates on separate line
 check_spm_updates
